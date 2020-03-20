@@ -4,19 +4,20 @@ import * as faceapi from 'face-api.js';
 import * as tf from '@tensorflow/tfjs';
 import * as tmImage from '@teachablemachine/image';
 import axios from 'axios'
+import { useState, useEffect } from 'react';
 const Index = () => {
+    useEffect(() => {
+        Webcam()
+    }, [])
+    const [name, setName] = useState('');
     async function Webcam() {
-
-        const video = document.getElementById('video')
         Promise.all([
             faceapi.nets.tinyFaceDetector.loadFromUri('/static/models'),
             faceapi.nets.faceLandmark68Net.loadFromUri('/static/models'),
             faceapi.nets.faceRecognitionNet.loadFromUri('/static/models'),
-            faceapi.nets.faceExpressionNet.loadFromUri('/static/models'),
-            await faceapi.loadSsdMobilenetv1Model('/static/models')
-
+            faceapi.nets.ssdMobilenetv1.loadFromUri('/static/models'),
         ]).then(startVideo)
-
+        const video = document.getElementById('video')
         function startVideo() {
             navigator.getUserMedia(
                 { video: {} },
@@ -24,58 +25,54 @@ const Index = () => {
                 err => console.error(err)
             )
         }
-
         video.addEventListener('play', () => {
             const canvas = faceapi.createCanvasFromMedia(video)
             document.body.append(canvas)
             const displaySize = { width: video.width, height: video.height }
             faceapi.matchDimensions(canvas, displaySize)
 
+            let labeledFaceDescriptors
+            (async () => {
+                labeledFaceDescriptors = await loadLabeledImages()
+            })()
+
             setInterval(async () => {
-                canvas.getContext('2d').clearRect(0, 0, 300, 300)
-                let fullFaceDescriptions = await faceapi.detectAllFaces(video).withFaceLandmarks().withFaceDescriptors()
-                fullFaceDescriptions = faceapi.resizeResults(fullFaceDescriptions)
-                faceapi.draw.drawDetections(canvas, fullFaceDescriptions)
-                faceapi.draw.drawLandmarks(canvas, fullFaceDescriptions)
-                const labels = ['sheldon', 'raj', 'leonard', 'howard']
-                const labeledFaceDescriptors = await Promise.all(
-                    labels.map(async label => {
-                        // fetch image data from urls and convert blob to HTMLImage element
-                        const imgUrl = `${label}.png`
-                        const img = await faceapi.fetchImage(imgUrl)
-
-                        // detect the face with the highest score in the image and compute it's landmarks and face descriptor
-                        const fullFaceDescription = await faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor()
-
-                        if (!fullFaceDescription) {
-                            throw new Error(`no faces detected for ${label}`)
-                        }
-
-                        const faceDescriptors = [fullFaceDescription.descriptor]
-                        return new faceapi.LabeledFaceDescriptors(label, faceDescriptors)
+                const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptors()
+                console.log(detections)
+                const resizedDetections = faceapi.resizeResults(detections, displaySize)
+                canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height)
+                if (labeledFaceDescriptors) {
+                    const faceMatcher = new faceapi.FaceMatcher(labeledFaceDescriptors, 0.6)
+                    const results = resizedDetections.map(data => faceMatcher.findBestMatch(data.descriptor))
+                    results.forEach((result, i) => {
+                        const box = resizedDetections[i].detection.box
+                        setName(result.toString())
+                        //const drawBox = new faceapi.draw.DrawBox(box, { label: result.toString() })
+                        //drawBox.draw(canvas)
                     })
-                )
-                const maxDescriptorDistance = 0.6
-                const faceMatcher = new faceapi.FaceMatcher(labeledFaceDescriptors, maxDescriptorDistance)
-                const results = fullFaceDescriptions.map(fd => faceMatcher.findBestMatch(fd.descriptor))
-                results.forEach((bestMatch, i) => {
-                    const box = fullFaceDescriptions[i].detection.box
-                    const text = bestMatch.toString()
-                    const drawBox = new faceapi.draw.DrawBox(box, { label: text })
-                    drawBox.draw(canvas)
-                })
-                //const resizedDetections = faceapi.resizeResults(detections, displaySize)
-                //canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height)
-                // faceapi.draw.drawDetections(canvas, resizedDetections)
-                // faceapi.draw.drawFaceLandmarks(canvas, resizedDetections)
-                // faceapi.draw.drawFaceExpressions(canvas, resizedDetections)
+                }
+
             }, 100)
         })
+        function loadLabeledImages() {
+            const labels = ['Arim', 'Tum']
+            return Promise.all(
+                labels.map(async label => {
+                    const descriptions = []
+                    for (let i = 1; i <= 7; i++) {
+                        const img = await faceapi.fetchImage(`/static/images/${label}/${i}.jpg`)
+                        const detections = await faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor()
+                        descriptions.push(detections.descriptor)
+                    }
+                    return new faceapi.LabeledFaceDescriptors(label, descriptions)
+                })
+            )
+        }
     }
     return (
         <div>
-            <button onClick={Webcam}>Camera</button>
-            <video id="video" height="300" width="300" autoPlay muted></video>
+            <video id="video" height="500px" width="500px" autoPlay muted />
+            <h1>{name}</h1>
         </div>
     )
 }
