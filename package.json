@@ -7,7 +7,7 @@
     "@teachablemachine/image": "^0.8.4",
     "@tensorflow/tfjs": "^1.7.0",
     "@tensorflow/tfjs-node": "^1.7.0",
-    "axios": "^0.19.2",
+    "axios": "^0.21.1",
     "canvas": "^2.6.1",
     "face-api.js": "^0.22.1",
     "fs": "0.0.1-security",
